@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Inventory Items collection
+    match /items/{itemId} {
+      allow read, write: if true;
+    }
+
+    // Goods Received Notes (GRN) collection
+    match /grn/{grnId} {
+      allow read, write: if true;
+    }
+
+    // Transfer of Goods (TOG) collection
+    match /tog/{togId} {
+      allow read, write: if true;
+    }
+
+    // Stock Adjustments collection
+    match /adjustments/{adjId} {
+      allow read, write: if true;
+    }
+
+    // Bincards Ledger collection
+    match /bincards/{bincardId} {
+      allow read, write: if true;
+    }
+  }
+}
