@@ -6,6 +6,8 @@ import {
   BincardEntry,
   Location,
   User,
+  UserRole,
+  PermissionKey,
   ROLE_DEFAULT_PERMISSIONS
 } from '../types';
 import { 
@@ -73,14 +75,11 @@ export class StorageService {
     try {
       const raw = localStorage.getItem(KEYS.CURRENT_USER);
       if (!raw) {
-        // Auto-login default admin for smooth initial experience
-        const defaultAdmin = INITIAL_USERS[0];
-        localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(defaultAdmin));
-        return defaultAdmin;
+        return null;
       }
       return JSON.parse(raw);
     } catch {
-      return INITIAL_USERS[0];
+      return null;
     }
   }
 
@@ -149,7 +148,9 @@ export class StorageService {
     email: string;
     password: string;
     fullName: string;
-    role?: User['role'];
+    role?: UserRole;
+    permissions?: PermissionKey[];
+    securityKey?: string;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
     const users = await this.getUsers();
     const cleanUsername = data.username.trim().toLowerCase();
@@ -162,15 +163,30 @@ export class StorageService {
       return { success: false, error: 'Email is already registered.' };
     }
 
-    const assignedRole = data.role || (users.length === 0 ? 'Admin' : 'Warehouse Operator');
+    const requestedRole: UserRole = data.role || (users.length === 0 ? 'Admin' : 'Warehouse Operator');
+    const isElevatedRole = requestedRole === 'Admin' || requestedRole === 'Manager';
+    const hasAdminSecret = data.securityKey?.trim() === 'ADMIN2026';
+
+    // Permission control: Elevated roles require security authorization passcode
+    if (isElevatedRole && !hasAdminSecret && users.length > 0) {
+      return { 
+        success: false, 
+        error: 'Security authorization code is required to register with Admin or Manager permissions. (Code: ADMIN2026)' 
+      };
+    }
+
+    const assignedPermissions = data.permissions && data.permissions.length > 0
+      ? data.permissions
+      : ROLE_DEFAULT_PERMISSIONS[requestedRole];
+
     const newUser: User = {
       id: `usr-${Date.now()}`,
       username: data.username.trim(),
       email: data.email.trim(),
       password: data.password,
       fullName: data.fullName.trim(),
-      role: assignedRole,
-      permissions: ROLE_DEFAULT_PERMISSIONS[assignedRole],
+      role: requestedRole,
+      permissions: assignedPermissions,
       isActive: true,
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
