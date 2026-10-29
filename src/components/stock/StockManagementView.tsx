@@ -11,13 +11,19 @@ import {
   BookOpenText, 
   AlertTriangle,
   Boxes,
-  MapPin
+  MapPin,
+  UploadCloud
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 
 interface StockManagementViewProps {
   items: Item[];
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canImport?: boolean;
   onAddNewItem: () => void;
+  onOpenBulkImport: () => void;
   onEditItem: (item: Item) => void;
   onDeleteItem: (id: string) => Promise<void>;
   onViewBincard: (item: Item) => void;
@@ -25,7 +31,12 @@ interface StockManagementViewProps {
 
 export const StockManagementView: React.FC<StockManagementViewProps> = ({
   items,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
+  canImport = true,
   onAddNewItem,
+  onOpenBulkImport,
   onEditItem,
   onDeleteItem,
   onViewBincard,
@@ -85,13 +96,25 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
             <span>Export to Excel</span>
           </button>
 
-          <button
-            onClick={onAddNewItem}
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add New Item</span>
-          </button>
+          {canImport && (
+            <button
+              onClick={onOpenBulkImport}
+              className="px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all"
+            >
+              <UploadCloud className="w-4 h-4 text-blue-600" />
+              <span>Import Products (Bulk)</span>
+            </button>
+          )}
+
+          {canCreate && (
+            <button
+              onClick={onAddNewItem}
+              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-2 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Item</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -252,20 +275,24 @@ export const StockManagementView: React.FC<StockManagementViewProps> = ({
                           >
                             <BookOpenText className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => onEditItem(item)}
-                            className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
-                            title="Edit Item Details"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200"
-                            title="Delete Item"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => onEditItem(item)}
+                              className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
+                              title="Edit Item Details"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDelete(item)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-slate-200"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Item, TOG, TOGItem } from '../../types';
+import { Item, TOG, TOGItem, Location } from '../../types';
 import { Modal } from '../common/Modal';
 import { generateId, formatCurrency } from '../../utils/formatters';
 import { Plus, Trash2, ArrowRightLeft, AlertCircle } from 'lucide-react';
@@ -8,6 +8,7 @@ interface NewTOGModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: Item[];
+  locations?: Location[];
   onSaveTOG: (tog: TOG) => Promise<void>;
 }
 
@@ -15,6 +16,7 @@ export const NewTOGModal: React.FC<NewTOGModalProps> = ({
   isOpen,
   onClose,
   items,
+  locations = [],
   onSaveTOG,
 }) => {
   const [togNumber] = useState(() => generateId('TOG'));
@@ -188,26 +190,40 @@ export const NewTOGModal: React.FC<NewTOGModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Source Location *</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Central Warehouse - Bay A"
+            <select
               value={sourceLocation}
               onChange={(e) => setSourceLocation(e.target.value)}
-              className="w-full text-xs bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500"
-            />
+              className="w-full text-xs bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500 font-medium"
+            >
+              <option value="Central Warehouse - Bay A">Central Warehouse - Bay A</option>
+              {locations.filter(l => l.isActive).map(loc => (
+                <option key={loc.id} value={`${loc.code} - ${loc.name}`}>
+                  {loc.code} — {loc.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Destination Location / Dept *</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Assembly Line 3 / Site Project Alpha"
-              value={destinationLocation}
-              onChange={(e) => setDestinationLocation(e.target.value)}
-              className="w-full text-xs bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500"
-            />
+            <div className="space-y-1">
+              <select
+                value={destinationLocation}
+                onChange={(e) => setDestinationLocation(e.target.value)}
+                className="w-full text-xs bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500 font-medium"
+              >
+                <option value="Production Dept / Assembly Line">Production Dept / Assembly Line</option>
+                <option value="Project Alpha Job Site">Project Alpha Job Site</option>
+                <option value="Branch Store B">Branch Store B</option>
+                <option value="R&D Testing Lab">R&D Testing Lab</option>
+                <option value="Maintenance Workshop">Maintenance Workshop</option>
+                {locations.filter(l => l.isActive).map(loc => (
+                  <option key={loc.id} value={`Transfer to: ${loc.code} - ${loc.name}`}>
+                    Warehouse Bin: {loc.code} ({loc.name})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>

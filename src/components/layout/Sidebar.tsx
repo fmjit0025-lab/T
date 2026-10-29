@@ -7,33 +7,52 @@ import {
   SlidersHorizontal, 
   BookOpenText, 
   FileSpreadsheet, 
-  Flame,
-  Layers
+  MapPin,
+  Users,
+  Layers,
+  LogOut,
+  ShieldCheck
 } from 'lucide-react';
+import { User, PermissionKey } from '../../types';
 
-export type ActiveTab = 'dashboard' | 'grn' | 'tog' | 'stock' | 'adjustment' | 'bincard' | 'reports';
+export type ActiveTab = 
+  | 'dashboard' 
+  | 'grn' 
+  | 'tog' 
+  | 'stock' 
+  | 'adjustment' 
+  | 'bincard' 
+  | 'reports' 
+  | 'locations' 
+  | 'users';
 
 interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   lowStockCount: number;
-  openFirebaseConfig: () => void;
-  isFirebaseActive: boolean;
+  currentUser: User;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   lowStockCount,
-  openFirebaseConfig,
-  isFirebaseActive,
+  currentUser,
+  onLogout,
 }) => {
+  const hasPermission = (key: PermissionKey): boolean => {
+    return currentUser.permissions?.includes(key) || currentUser.role === 'Admin';
+  };
+
   const menuItems = [
     {
       id: 'dashboard' as ActiveTab,
       label: 'Dashboard',
       icon: LayoutDashboard,
       badge: null,
+      desc: 'Overview & Metrics',
+      requiredPerm: 'dashboard:view' as PermissionKey,
     },
     {
       id: 'grn' as ActiveTab,
@@ -41,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: PackagePlus,
       badge: null,
       desc: 'Inward Receipts',
+      requiredPerm: 'grn:view' as PermissionKey,
     },
     {
       id: 'tog' as ActiveTab,
@@ -48,37 +68,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ArrowRightLeft,
       badge: null,
       desc: 'Outward & Excel',
+      requiredPerm: 'tog:view' as PermissionKey,
     },
     {
       id: 'stock' as ActiveTab,
       label: 'Stock Management',
       icon: Boxes,
       badge: null,
-      desc: 'Items & Master Data',
+      desc: 'Items & Master Catalog',
+      requiredPerm: 'stock:view' as PermissionKey,
+    },
+    {
+      id: 'locations' as ActiveTab,
+      label: 'Locations Master',
+      icon: MapPin,
+      badge: null,
+      desc: 'Bins, Racks & Zones',
+      requiredPerm: 'locations:view' as PermissionKey,
     },
     {
       id: 'adjustment' as ActiveTab,
       label: 'Stock Adjustment',
       icon: SlidersHorizontal,
       badge: null,
-      desc: 'Audit & Spoilage',
+      desc: 'Audit & Discrepancies',
+      requiredPerm: 'adjustment:view' as PermissionKey,
     },
     {
       id: 'bincard' as ActiveTab,
       label: 'Bincard Ledger',
       icon: BookOpenText,
       badge: null,
-      desc: 'Item Bin Ledger',
+      desc: 'Item Movement Ledger',
+      requiredPerm: 'bincard:view' as PermissionKey,
     },
     {
       id: 'reports' as ActiveTab,
       label: 'Reports & Analytics',
       icon: FileSpreadsheet,
       badge: lowStockCount > 0 ? `${lowStockCount} Low` : null,
-      badgeVariant: 'danger',
-      desc: 'Available & Low Stock',
+      desc: 'Valuation & Low Stock',
+      requiredPerm: 'reports:view' as PermissionKey,
+    },
+    {
+      id: 'users' as ActiveTab,
+      label: 'Users & Permissions',
+      icon: Users,
+      badge: null,
+      desc: 'Staff & Security Roles',
+      requiredPerm: 'users:manage' as PermissionKey,
     },
   ];
+
+  // Filter items based on current user permissions
+  const visibleMenuItems = menuItems.filter(item => hasPermission(item.requiredPerm));
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 min-h-screen border-r border-slate-800 select-none no-print">
@@ -96,12 +139,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation List */}
-      <nav className="p-3 space-y-1.5 flex-1">
+      <nav className="p-3 space-y-1.5 flex-1 overflow-y-auto">
         <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
           Inventory Modules
         </div>
 
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (
@@ -135,30 +178,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Firebase Status Card */}
+      {/* User Profile & Logout Box */}
       <div className="p-4 border-t border-slate-800">
-        <div 
-          onClick={openFirebaseConfig}
-          className="bg-slate-800/80 hover:bg-slate-800 rounded-xl p-3 border border-slate-700/60 cursor-pointer transition-colors group"
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
-              <Flame className={`w-4 h-4 ${isFirebaseActive ? 'text-amber-400' : 'text-slate-400'}`} />
-              <span className="text-xs font-semibold text-white">Firebase Sync</span>
+        <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/60 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0 uppercase">
+              {currentUser.fullName.charAt(0)}
             </div>
-            <span className={`w-2 h-2 rounded-full ${isFirebaseActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-white truncate">
+                {currentUser.fullName}
+              </div>
+              <div className="text-[10px] text-blue-400 font-medium truncate">
+                {currentUser.role}
+              </div>
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400 leading-tight">
-            {isFirebaseActive ? 'Connected to Firestore' : 'Local / Demo Mode'}
-          </p>
-          <div className="mt-2 text-[11px] text-blue-400 group-hover:text-blue-300 font-medium flex items-center justify-between">
-            <span>Configure Firebase</span>
-            <span>&rarr;</span>
-          </div>
+
+          <button
+            onClick={onLogout}
+            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="mt-3 text-center text-[10px] text-slate-400">
-          StockPulse WMS v2.4 • 2026
+        <div className="mt-2 text-center text-[10px] text-slate-500">
+          StockPulse WMS • Role-Protected
         </div>
       </div>
     </aside>

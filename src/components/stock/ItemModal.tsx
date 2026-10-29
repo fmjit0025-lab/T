@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Item, UOM } from '../../types';
+import { Item, UOM, Location } from '../../types';
 import { Modal } from '../common/Modal';
 import { generateId } from '../../utils/formatters';
-import { Check, Boxes } from 'lucide-react';
+import { Check, Boxes, MapPin } from 'lucide-react';
 
 interface ItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   item: Item | null;
+  locations?: Location[];
   onSave: (item: Item) => Promise<void>;
 }
 
@@ -28,6 +29,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   isOpen,
   onClose,
   item,
+  locations = [],
   onSave,
 }) => {
   const [sku, setSku] = useState('');
@@ -164,15 +166,27 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Default Bin / Rack Location *</label>
-            <input
-              type="text"
-              required
-              value={binLocation}
-              onChange={(e) => setBinLocation(e.target.value)}
-              placeholder="e.g. A-02-04"
-              className="w-full text-xs font-mono bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500"
-            />
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Default Bin / Storage Location *</label>
+            <div className="space-y-1">
+              <select
+                required
+                value={binLocation}
+                onChange={(e) => setBinLocation(e.target.value)}
+                className="w-full text-xs font-mono bg-white text-slate-800 px-3 py-2 rounded-lg border border-slate-300 focus:outline-blue-500"
+              >
+                <option value="">-- Select Warehouse Location --</option>
+                {/* Include current item's bin if not in list */}
+                {binLocation && !locations.some(l => l.code === binLocation) && (
+                  <option value={binLocation}>{binLocation} (Assigned / Custom)</option>
+                )}
+                {locations.filter(l => l.isActive).map((loc) => (
+                  <option key={loc.id} value={loc.code}>
+                    {loc.code} — {loc.name} {loc.zone ? `[${loc.zone}]` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400">Choose from Warehouse Storage Locations Master</p>
+            </div>
           </div>
 
           <div>

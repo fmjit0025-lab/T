@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Item, GRN, GRNItem } from '../../types';
+import { Item, GRN, GRNItem, Location } from '../../types';
 import { Modal } from '../common/Modal';
 import { generateId, formatCurrency } from '../../utils/formatters';
 import { Plus, Trash2, PackageCheck } from 'lucide-react';
@@ -8,6 +8,7 @@ interface NewGRNModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: Item[];
+  locations?: Location[];
   onSaveGRN: (grn: GRN) => Promise<void>;
 }
 
@@ -15,6 +16,7 @@ export const NewGRNModal: React.FC<NewGRNModalProps> = ({
   isOpen,
   onClose,
   items,
+  locations = [],
   onSaveGRN,
 }) => {
   const [grnNumber] = useState(() => generateId('GRN'));
@@ -291,13 +293,20 @@ export const NewGRNModal: React.FC<NewGRNModalProps> = ({
                     </td>
 
                     <td className="py-2 px-2">
-                      <input
-                        type="text"
+                      <select
                         value={line.binLocation}
                         onChange={(e) => handleBinChange(idx, e.target.value)}
-                        placeholder="Bin"
                         className="w-full text-xs font-mono bg-white text-slate-800 px-2 py-1.5 rounded border border-slate-300 focus:outline-blue-500"
-                      />
+                      >
+                        {line.binLocation && !locations.some(l => l.code === line.binLocation) && (
+                          <option value={line.binLocation}>{line.binLocation}</option>
+                        )}
+                        {locations.filter(l => l.isActive).map(loc => (
+                          <option key={loc.id} value={loc.code}>
+                            {loc.code}
+                          </option>
+                        ))}
+                      </select>
                     </td>
 
                     <td className="py-2 px-2">

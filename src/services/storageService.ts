@@ -3,14 +3,19 @@ import {
   GRN, 
   TOG, 
   StockAdjustment, 
-  BincardEntry 
+  BincardEntry,
+  Location,
+  User,
+  ROLE_DEFAULT_PERMISSIONS
 } from '../types';
 import { 
   INITIAL_ITEMS, 
   INITIAL_GRNS, 
   INITIAL_TOGS, 
   INITIAL_ADJUSTMENTS, 
-  INITIAL_BINCARD_ENTRIES 
+  INITIAL_BINCARD_ENTRIES,
+  INITIAL_LOCATIONS,
+  INITIAL_USERS
 } from './mockData';
 import { 
   getFirebaseInstances, 
@@ -28,6 +33,9 @@ const KEYS = {
   TOG: 'stockpulse_tog',
   ADJUSTMENTS: 'stockpulse_adjustments',
   BINCARD: 'stockpulse_bincard',
+  LOCATIONS: 'stockpulse_locations',
+  USERS: 'stockpulse_users',
+  CURRENT_USER: 'stockpulse_current_user',
 };
 
 // Generic LocalStorage helpers
@@ -60,6 +68,145 @@ export class StorageService {
     return db !== null;
   }
 
+  // ==================== AUTHENTICATION & USERS ====================
+  static getCurrentUser(): User | null {
+    try {
+      const raw = localStorage.getItem(KEYS.CURRENT_USER);
+      if (!raw) {
+        // Auto-login default admin for smooth initial experience
+        const defaultAdmin = INITIAL_USERS[0];
+        localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(defaultAdmin));
+        return defaultAdmin;
+      }
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_USERS[0];
+    }
+  }
+
+  static setCurrentUser(user: User | null): void {
+    if (user) {
+      setLocal(KEYS.CURRENT_USER, user);
+    } else {
+      localStorage.removeItem(KEYS.CURRENT_USER);
+    }
+  }
+
+  static async getUsers(): Promise<User[]> {
+    return getLocal<User[]>(KEYS.USERS, INITIAL_USERS);
+  }
+
+  static async saveUser(user: User): Promise<void> {
+    const users = await this.getUsers();
+    const index = users.findIndex(u => u.id === user.id);
+    if (index >= 0) {
+      users[index] = user;
+    } else {
+      users.unshift(user);
+    }
+    setLocal(KEYS.USERS, users);
+
+    // If updating current logged in user, refresh session
+    const current = this.getCurrentUser();
+    if (current && current.id === user.id) {
+      this.setCurrentUser(user);
+    }
+  }
+
+  static async deleteUser(id: string): Promise<void> {
+    const users = await this.getUsers();
+    setLocal(KEYS.USERS, users.filter(u => u.id !== id));
+  }
+
+  static async login(usernameOrEmail: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
+    const users = await this.getUsers();
+    const cleanIdentifier = usernameOrEmail.trim().toLowerCase();
+    const user = users.find(u => 
+      (u.username.toLowerCase() === cleanIdentifier || u.email.toLowerCase() === cleanIdentifier) &&
+      (!u.password || u.password === password)
+    );
+
+    if (!user) {
+      return { success: false, error: 'Invalid username/email or password.' };
+    }
+
+    if (!user.isActive) {
+      return { success: false, error: 'Account is deactivated. Please contact an administrator.' };
+    }
+
+    const updatedUser: User = {
+      ...user,
+      lastLogin: new Date().toISOString(),
+    };
+    await this.saveUser(updatedUser);
+    this.setCurrentUser(updatedUser);
+
+    return { success: true, user: updatedUser };
+  }
+
+  static async register(data: {
+    username: string;
+    email: string;
+    password: string;
+    fullName: string;
+    role?: User['role'];
+  }): Promise<{ success: boolean; user?: User; error?: string }> {
+    const users = await this.getUsers();
+    const cleanUsername = data.username.trim().toLowerCase();
+    const cleanEmail = data.email.trim().toLowerCase();
+
+    if (users.some(u => u.username.toLowerCase() === cleanUsername)) {
+      return { success: false, error: 'Username is already taken.' };
+    }
+    if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'Email is already registered.' };
+    }
+
+    const assignedRole = data.role || (users.length === 0 ? 'Admin' : 'Warehouse Operator');
+    const newUser: User = {
+      id: `usr-${Date.now()}`,
+      username: data.username.trim(),
+      email: data.email.trim(),
+      password: data.password,
+      fullName: data.fullName.trim(),
+      role: assignedRole,
+      permissions: ROLE_DEFAULT_PERMISSIONS[assignedRole],
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+    };
+
+    await this.saveUser(newUser);
+    this.setCurrentUser(newUser);
+
+    return { success: true, user: newUser };
+  }
+
+  static logout(): void {
+    this.setCurrentUser(null);
+  }
+
+  // ==================== LOCATIONS ====================
+  static async getLocations(): Promise<Location[]> {
+    return getLocal<Location[]>(KEYS.LOCATIONS, INITIAL_LOCATIONS);
+  }
+
+  static async saveLocation(location: Location): Promise<void> {
+    const locations = await this.getLocations();
+    const index = locations.findIndex(l => l.id === location.id);
+    if (index >= 0) {
+      locations[index] = location;
+    } else {
+      locations.unshift(location);
+    }
+    setLocal(KEYS.LOCATIONS, locations);
+  }
+
+  static async deleteLocation(id: string): Promise<void> {
+    const locations = await this.getLocations();
+    setLocal(KEYS.LOCATIONS, locations.filter(l => l.id !== id));
+  }
+
   // ==================== ITEMS ====================
   static async getItems(): Promise<Item[]> {
     const { db } = getFirebaseInstances();
@@ -89,7 +236,6 @@ export class StorageService {
         console.error('Firestore saveItem error:', err);
       }
     }
-    // Also maintain local
     const items = getLocal<Item[]>(KEYS.ITEMS, INITIAL_ITEMS);
     const index = items.findIndex((i) => i.id === item.id);
     if (index >= 0) {
@@ -111,6 +257,70 @@ export class StorageService {
     }
     const items = getLocal<Item[]>(KEYS.ITEMS, INITIAL_ITEMS);
     setLocal(KEYS.ITEMS, items.filter((i) => i.id !== id));
+  }
+
+  // ==================== PRODUCT BULK IMPORT ====================
+  static async bulkImportItems(newItems: Item[], currentUserName: string = 'Bulk Import'): Promise<{ imported: number; updated: number }> {
+    const existingItems = await this.getItems();
+    const bincards = await this.getBincardEntries();
+    let imported = 0;
+    let updated = 0;
+
+    for (const newItem of newItems) {
+      const existingIndex = existingItems.findIndex(
+        i => i.sku.toUpperCase() === newItem.sku.toUpperCase()
+      );
+
+      if (existingIndex >= 0) {
+        // Update existing item
+        const prev = existingItems[existingIndex];
+        existingItems[existingIndex] = {
+          ...prev,
+          name: newItem.name || prev.name,
+          category: newItem.category || prev.category,
+          uom: newItem.uom || prev.uom,
+          binLocation: newItem.binLocation || prev.binLocation,
+          unitCost: newItem.unitCost > 0 ? newItem.unitCost : prev.unitCost,
+          minStockLevel: newItem.minStockLevel >= 0 ? newItem.minStockLevel : prev.minStockLevel,
+          currentStock: newItem.currentStock >= 0 ? newItem.currentStock : prev.currentStock,
+          supplier: newItem.supplier || prev.supplier,
+          description: newItem.description || prev.description,
+          updatedAt: new Date().toISOString(),
+        };
+        updated++;
+      } else {
+        // Insert as new item
+        existingItems.unshift(newItem);
+        imported++;
+
+        // If starting stock is greater than 0, create an initial bincard ledger record
+        if (newItem.currentStock > 0) {
+          const entry: BincardEntry = {
+            id: `bin-init-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: new Date().toISOString(),
+            date: new Date().toISOString().split('T')[0],
+            itemId: newItem.id,
+            sku: newItem.sku,
+            name: newItem.name,
+            location: newItem.binLocation,
+            transType: 'INITIAL',
+            refNumber: 'BULK-IMPORT',
+            qtyIn: newItem.currentStock,
+            qtyOut: 0,
+            balance: newItem.currentStock,
+            unitCost: newItem.unitCost,
+            user: currentUserName,
+            remarks: 'Opening inventory balance via Bulk Excel/CSV Import'
+          };
+          bincards.unshift(entry);
+        }
+      }
+    }
+
+    setLocal(KEYS.ITEMS, existingItems);
+    setLocal(KEYS.BINCARD, bincards);
+
+    return { imported, updated };
   }
 
   // ==================== GRN ====================
@@ -141,7 +351,6 @@ export class StorageService {
       }
     }
 
-    // Save GRN locally
     const grns = getLocal<GRN[]>(KEYS.GRN, INITIAL_GRNS);
     grns.unshift(grn);
     setLocal(KEYS.GRN, grns);
@@ -162,7 +371,6 @@ export class StorageService {
         }
         await this.saveItem(targetItem);
 
-        // Add Bincard entry
         const entry: BincardEntry = {
           id: `bin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           timestamp: new Date().toISOString(),
@@ -181,13 +389,6 @@ export class StorageService {
           remarks: `Received via PO: ${grn.poNumber || 'N/A'}, Supplier: ${grn.supplier}`
         };
         bincards.unshift(entry);
-        if (db) {
-          try {
-            await setDoc(doc(db, 'bincards', entry.id), entry);
-          } catch (e) {
-            console.error('Failed to sync bincard to firestore:', e);
-          }
-        }
       }
     }
     setLocal(KEYS.BINCARD, bincards);
@@ -221,12 +422,10 @@ export class StorageService {
       }
     }
 
-    // Save TOG locally
     const togs = getLocal<TOG[]>(KEYS.TOG, INITIAL_TOGS);
     togs.unshift(tog);
     setLocal(KEYS.TOG, togs);
 
-    // Atomically decrement inventory stock & record bincard entries
     const items = await this.getItems();
     const bincards = await this.getBincardEntries();
 
@@ -239,7 +438,6 @@ export class StorageService {
         targetItem.updatedAt = new Date().toISOString();
         await this.saveItem(targetItem);
 
-        // Add Bincard entry
         const entry: BincardEntry = {
           id: `bin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           timestamp: new Date().toISOString(),
@@ -258,13 +456,6 @@ export class StorageService {
           remarks: `Transfer to: ${tog.destinationLocation} (${tog.purpose || 'Issued'})`
         };
         bincards.unshift(entry);
-        if (db) {
-          try {
-            await setDoc(doc(db, 'bincards', entry.id), entry);
-          } catch (e) {
-            console.error('Failed to sync bincard to firestore:', e);
-          }
-        }
       }
     }
     setLocal(KEYS.BINCARD, bincards);
@@ -302,7 +493,6 @@ export class StorageService {
     adjs.unshift(adj);
     setLocal(KEYS.ADJUSTMENTS, adjs);
 
-    // Update target item stock
     const items = await this.getItems();
     const targetItem = items.find((i) => i.id === adj.itemId || i.sku === adj.sku);
     if (targetItem) {
@@ -310,7 +500,6 @@ export class StorageService {
       targetItem.updatedAt = new Date().toISOString();
       await this.saveItem(targetItem);
 
-      // Add Bincard entry
       const bincards = await this.getBincardEntries();
       const isIncrease = adj.type === 'INCREASE';
       const entry: BincardEntry = {
@@ -331,13 +520,6 @@ export class StorageService {
         remarks: `Stock Adjustment: ${adj.reason} - ${adj.notes || ''}`
       };
       bincards.unshift(entry);
-      if (db) {
-        try {
-          await setDoc(doc(db, 'bincards', entry.id), entry);
-        } catch (e) {
-          console.error('Failed to sync bincard to firestore:', e);
-        }
-      }
       setLocal(KEYS.BINCARD, bincards);
     }
   }
@@ -361,7 +543,6 @@ export class StorageService {
       entries = getLocal<BincardEntry[]>(KEYS.BINCARD, INITIAL_BINCARD_ENTRIES);
     }
 
-    // Sort newest first
     entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     if (itemId) {
@@ -370,72 +551,14 @@ export class StorageService {
     return entries;
   }
 
-  // ==================== DEMO SEED / RESET ====================
+  // ==================== RESET ====================
   static async resetToDefault(): Promise<void> {
     setLocal(KEYS.ITEMS, INITIAL_ITEMS);
     setLocal(KEYS.GRN, INITIAL_GRNS);
     setLocal(KEYS.TOG, INITIAL_TOGS);
     setLocal(KEYS.ADJUSTMENTS, INITIAL_ADJUSTMENTS);
     setLocal(KEYS.BINCARD, INITIAL_BINCARD_ENTRIES);
-
-    const { db } = getFirebaseInstances();
-    if (db) {
-      try {
-        const batch = writeBatch(db);
-        // seed items
-        for (const item of INITIAL_ITEMS) {
-          batch.set(doc(db, 'items', item.id), item);
-        }
-        // seed grns
-        for (const grn of INITIAL_GRNS) {
-          batch.set(doc(db, 'grn', grn.id), grn);
-        }
-        // seed togs
-        for (const tog of INITIAL_TOGS) {
-          batch.set(doc(db, 'tog', tog.id), tog);
-        }
-        // seed adjustments
-        for (const adj of INITIAL_ADJUSTMENTS) {
-          batch.set(doc(db, 'adjustments', adj.id), adj);
-        }
-        // seed bincards
-        for (const bin of INITIAL_BINCARD_ENTRIES) {
-          batch.set(doc(db, 'bincards', bin.id), bin);
-        }
-        await batch.commit();
-      } catch (err) {
-        console.error('Failed to seed Firebase Firestore:', err);
-      }
-    }
-  }
-
-  static async seedFirebase(): Promise<{ success: boolean; message: string }> {
-    const { db } = getFirebaseInstances();
-    if (!db) {
-      return { success: false, message: 'Firebase connection not initialized or disabled.' };
-    }
-
-    try {
-      const batch = writeBatch(db);
-      for (const item of INITIAL_ITEMS) {
-        batch.set(doc(db, 'items', item.id), item);
-      }
-      for (const grn of INITIAL_GRNS) {
-        batch.set(doc(db, 'grn', grn.id), grn);
-      }
-      for (const tog of INITIAL_TOGS) {
-        batch.set(doc(db, 'tog', tog.id), tog);
-      }
-      for (const adj of INITIAL_ADJUSTMENTS) {
-        batch.set(doc(db, 'adjustments', adj.id), adj);
-      }
-      for (const bin of INITIAL_BINCARD_ENTRIES) {
-        batch.set(doc(db, 'bincards', bin.id), bin);
-      }
-      await batch.commit();
-      return { success: true, message: 'Sample inventory, GRNs, TOGs, and Bincards uploaded to Firebase!' };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'Failed to write to Firebase.' };
-    }
+    setLocal(KEYS.LOCATIONS, INITIAL_LOCATIONS);
+    setLocal(KEYS.USERS, INITIAL_USERS);
   }
 }
